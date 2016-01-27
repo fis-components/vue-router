@@ -64,43 +64,44 @@ class Router {
     this._beforeEachHooks = []
     this._afterEachHooks = []
 
-    // feature detection
-    this._hasPushState =
-      typeof window !== 'undefined' &&
-      window.history &&
-      window.history.pushState
-
     // trigger transition on initial render?
     this._rendered = false
     this._transitionOnLoad = transitionOnLoad
 
     // history mode
+    this._root = root
     this._abstract = abstract
     this._hashbang = hashbang
-    this._history = this._hasPushState && history
 
-    // other options
-    this._saveScrollPosition = saveScrollPosition
-    this._linkActiveClass = linkActiveClass
-    this._suppress = suppressTransitionError
+    // check if HTML5 history is available
+    const hasPushState =
+      typeof window !== 'undefined' &&
+      window.history &&
+      window.history.pushState
+    this._history = history && hasPushState
+    this._historyFallback = history && !hasPushState
 
     // create history object
-    let inBrowser = Vue.util.inBrowser
+    const inBrowser = Vue.util.inBrowser
     this.mode = (!inBrowser || this._abstract)
       ? 'abstract'
       : this._history
         ? 'html5'
         : 'hash'
 
-    let History = historyBackends[this.mode]
-    let self = this
+    const History = historyBackends[this.mode]
     this.history = new History({
       root: root,
       hashbang: this._hashbang,
-      onChange: function (path, state, anchor) {
-        self._match(path, state, anchor)
+      onChange: (path, state, anchor) => {
+        this._match(path, state, anchor)
       }
     })
+
+    // other options
+    this._saveScrollPosition = saveScrollPosition
+    this._linkActiveClass = linkActiveClass
+    this._suppress = suppressTransitionError
   }
 
   // API ===================================================
@@ -263,6 +264,25 @@ class Router {
       // give it a name for better debugging
       Ctor.options.name = Ctor.options.name || 'RouterApp'
     }
+
+    // handle history fallback in browsers that do not
+    // support HTML5 history API
+    if (this._historyFallback) {
+      const location = window.location
+      const history = new HTML5History({ root: this._root })
+      const path = history.root
+        ? location.pathname.replace(history.rootRE, '')
+        : location.pathname
+      if (path && path !== '/') {
+        location.assign(
+          (history.root || '') + '/' +
+          this.history.formatPath(path) +
+          location.search
+        )
+        return
+      }
+    }
+
     this.history.start()
   }
 
@@ -364,7 +384,7 @@ class Router {
     this._guardRecognizer.add([{
       path: path,
       handler: (match, query) => {
-        let realPath = mapParams(
+        const realPath = mapParams(
           mappedPath,
           match.params,
           query
@@ -409,8 +429,8 @@ class Router {
       return
     }
 
-    let currentRoute = this._currentRoute
-    let currentTransition = this._currentTransition
+    const currentRoute = this._currentRoute
+    const currentTransition = this._currentTransition
 
     if (currentTransition) {
       if (currentTransition.to.path === path) {
@@ -430,8 +450,8 @@ class Router {
     }
 
     // construct new route and transition context
-    let route = new Route(path, this)
-    let transition = new Transition(this, route, currentRoute)
+    const route = new Route(path, this)
+    const transition = new Transition(this, route, currentRoute)
 
     // current transition is updated right now.
     // however, current route will only be updated after the transition has
@@ -454,8 +474,8 @@ class Router {
     }
 
     // check global before hook
-    let beforeHooks = this._beforeEachHooks
-    let startTransition = () => {
+    const beforeHooks = this._beforeEachHooks
+    const startTransition = () => {
       transition.start(() => {
         this._postTransition(route, state, anchor)
       })
@@ -494,7 +514,7 @@ class Router {
 
   _onTransitionValidated (transition) {
     // set current route
-    let route = this._currentRoute = transition.to
+    const route = this._currentRoute = transition.to
     // update route context for all children
     if (this.app.$route !== route) {
       this.app.$route = route
@@ -524,14 +544,14 @@ class Router {
     // handle scroll positions
     // saved scroll positions take priority
     // then we check if the path has an anchor
-    let pos = state && state.pos
+    const pos = state && state.pos
     if (pos && this._saveScrollPosition) {
       Vue.nextTick(() => {
         window.scrollTo(pos.x, pos.y)
       })
     } else if (anchor) {
       Vue.nextTick(() => {
-        let el = document.getElementById(anchor.slice(1))
+        const el = document.getElementById(anchor.slice(1))
         if (el) {
           window.scrollTo(window.scrollX, el.offsetTop)
         }
@@ -548,6 +568,7 @@ class Router {
    */
 
   _stringifyPath (path) {
+    let fullPath = ''
     if (path && typeof path === 'object') {
       if (path.name) {
         const extend = Vue.util.extend
@@ -561,9 +582,9 @@ class Router {
         if (path.query) {
           params.queryParams = path.query
         }
-        return this._recognizer.generate(path.name, params)
+        fullPath = this._recognizer.generate(path.name, params)
       } else if (path.path) {
-        let fullPath = path.path
+        fullPath = path.path
         if (path.query) {
           const query = this._recognizer.generateQueryString(path.query)
           if (fullPath.indexOf('?') > -1) {
@@ -572,13 +593,11 @@ class Router {
             fullPath += query
           }
         }
-        return fullPath
-      } else {
-        return ''
       }
     } else {
-      return path ? path + '' : ''
+      fullPath = path ? path + '' : ''
     }
+    return encodeURI(fullPath)
   }
 }
 
