@@ -1,0 +1,10 @@
+{
+    "repos": "https://github.com/vuejs/vue-router.git",
+    "description": "A router for Vue.js",
+    "name": "vue-router",
+    "main": "src/index.js",
+    "dependencies": {},
+    "version": "0.7.10",
+    "tag": "master",
+    "reposType": "npm"
+}
